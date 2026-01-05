@@ -13,6 +13,8 @@ import {useStores} from '../stores';
 import {Virtuoso} from 'react-virtuoso';
 import Tooltip from '@mui/material/Tooltip';
 import {PushMessageDialog} from './PushMessageDialog';
+import Box from '@mui/material/Box';
+import TextField from '@mui/material/TextField';
 
 const Messages = observer(() => {
     const {id} = useParams<{id: string}>();
@@ -21,6 +23,8 @@ const Messages = observer(() => {
     const [deleteAll, setDeleteAll] = React.useState(false);
     const [pushMessageOpen, setPushMessageOpen] = React.useState(false);
     const [isLoadingMore, setLoadingMore] = React.useState(false);
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [priorityFilter, setPriorityFilter] = React.useState('');
     const {messagesStore, appStore} = useStores();
     const messages = messagesStore.get(appId);
     const hasMore = messagesStore.canLoadMore(appId);
@@ -54,6 +58,30 @@ const Messages = observer(() => {
         />
     );
 
+    const filteredMessages = React.useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        const priorityText = priorityFilter.trim();
+        const priority = priorityText === '' ? undefined : parseInt(priorityText, 10);
+        return messages.filter((message) => {
+            if (query) {
+                const title = message.title?.toLowerCase() ?? '';
+                const body = message.message?.toLowerCase() ?? '';
+                if (!title.includes(query) && !body.includes(query)) {
+                    return false;
+                }
+            }
+            if (priorityText !== '' && (Number.isNaN(priority) || message.priority !== priority)) {
+                return false;
+            }
+            return true;
+        });
+    }, [messages, searchQuery, priorityFilter]);
+    const hasFilteredMessages = filteredMessages.length !== 0;
+    const emptyLabel =
+        searchQuery.trim() !== '' || priorityFilter.trim() !== ''
+            ? 'No matching messages'
+            : 'No messages';
+
     const checkIfLoadMore = () => {
         if (!isLoadingMore && messagesStore.canLoadMore(appId)) {
             setLoadingMore(true);
@@ -65,7 +93,7 @@ const Messages = observer(() => {
         if (hasMore) {
             return <LoadingSpinner />;
         }
-        if (hasMessages) {
+        if (hasFilteredMessages) {
             return label("You've reached the end");
         }
         return null;
@@ -76,13 +104,13 @@ const Messages = observer(() => {
             id="messages"
             style={{width: '100%'}}
             useWindowScroll
-            totalCount={messages.length}
+            totalCount={filteredMessages.length}
             endReached={checkIfLoadMore}
-            data={messages}
+            data={filteredMessages}
             itemContent={renderMessage}
             components={{
                 Footer: messageFooter,
-                EmptyPlaceholder: () => label('No messages'),
+                EmptyPlaceholder: () => label(emptyLabel),
             }}
         />
     );
@@ -132,7 +160,35 @@ const Messages = observer(() => {
                     </Button>
                 </div>
             }>
-            {!messagesStore.loaded(appId) ? <LoadingSpinner /> : renderMessages()}
+            {!messagesStore.loaded(appId) ? (
+                <LoadingSpinner />
+            ) : (
+                <>
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 1,
+                            marginBottom: 2,
+                        }}>
+                        <TextField
+                            size="small"
+                            label="Search title or body"
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                        />
+                        <TextField
+                            size="small"
+                            label="Priority"
+                            type="number"
+                            value={priorityFilter}
+                            onChange={(event) => setPriorityFilter(event.target.value)}
+                            inputProps={{min: 0}}
+                        />
+                    </Box>
+                    {renderMessages()}
+                </>
+            )}
 
             {deleteAll && (
                 <ConfirmDialog
